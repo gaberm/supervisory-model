@@ -1,0 +1,1 @@
+db_url: postgresql://malte@localhost:5432/supervisor_db
