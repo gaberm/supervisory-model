@@ -1,0 +1,24 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class VehicleToAdd:
+    vehicle_id: int
+    initial_soc: float
+
+
+@dataclass(frozen=True)
+class ChargingInputs:
+    vehicles_to_add: tuple[VehicleToAdd, ...]
+    vehicles_to_remove: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class Soc:
+    vehicle_id: int
+    soc: float
+
+
+@dataclass(frozen=True)
+class ChargingOutputs:
+    vehicles_soc: tuple[Soc, ...]
