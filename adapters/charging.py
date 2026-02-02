@@ -1,7 +1,8 @@
 from traitlets import Any
 from adapters import ModelAdapter
-from ..models.charging import ChargingModel
-from ..schemas.adapters.charging import ChargingOutputs, ChargingInputs, Soc
+from ..models.charging_model import ChargingModel
+from models.outputs import ChargingOutputs, VehicleSoc
+from models.inputs import ChargingInputs
 
 
 class ChargingAdapter(ModelAdapter):
@@ -25,7 +26,7 @@ class ChargingAdapter(ModelAdapter):
         outputs = self.charging_model.get_all_soc()
         outputs = ChargingOutputs(
             vehicles_soc=tuple(
-                Soc(vehicle_id=vid, soc=soc) for vid, soc in outputs.items()
+                VehicleSoc(vehicle_id=vid, soc=soc) for vid, soc in outputs.items()
             )
         )
         return outputs

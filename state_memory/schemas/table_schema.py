@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Mapping, Any
 
 
 class TableSchema(ABC):
@@ -19,10 +18,7 @@ class TableSchema(ABC):
         pass
 
     @abstractmethod
-    def insert_statement(
-        self,
-        data: Mapping[str, Any],
-    ) -> tuple[str, tuple]:
+    def insert_sql(self) -> str:
         """
         Return a parametrized INSERT statement and parameters.
 
