@@ -1,17 +1,26 @@
 from dataclasses import dataclass
+from models.outputs.decorator import record
 
 
+@record(
+    table="arrived_vehicles",
+    key=("vehicle_id",),
+)
 @dataclass(frozen=True)
 class ArrivedVehicle:
     vehicle_id: int
     soc_at_arrival: float
-    building_id: int
+    road_id: int
     arrival_time: float
 
 
+@record(
+    table="departed_vehicles",
+    key=("vehicle_id",),
+)
+@dataclass(frozen=True)
 class DepartedVehicle:
     vehicle_id: int
-    tour_id: int
     departure_time: float
 
 

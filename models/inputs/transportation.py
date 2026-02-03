@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class VehicleSoc:
     vehicle_id: int
     soc: float
+    timestep: float
 
 
 @dataclass(frozen=True)
