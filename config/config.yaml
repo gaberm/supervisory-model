@@ -1,4 +1,6 @@
 defaults:
 - _self_
-- sumo: sumo.yaml
+- models:
+  - charging
+  - transportation
 - seed: 42

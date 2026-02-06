@@ -1,5 +1,5 @@
-from .charging import VehicleSoc, ChargingOutputs
-from .transportation import (
+from .charging_outputs import VehicleSoc, ChargingOutputs
+from .transportation_outputs import (
     ArrivedVehicle,
     DepartedVehicle,
     TransportationOutputs,

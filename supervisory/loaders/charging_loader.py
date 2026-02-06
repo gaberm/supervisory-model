@@ -1,22 +1,21 @@
 from typing import Any
 import psycopg2 as psycopg
 from models.inputs import ChargingInputs, VehicleToAdd, VehicleToRemove
-from supervisory.inputs.base import BaseLoader, BaseInputLoader
+from supervisory.loaders.base_loader import BaseLoader, BaseInputLoader
 
 
 class VehicleToAddLoader(BaseLoader[VehicleToAdd]):
-    def __init__(self, conn: psycopg.extensions.connection):
-        self.conn = conn
-
-    def _extract(self, arrival_time) -> list[VehicleToAdd]:
-        with self.conn.cursor() as cursor:
+    def _extract(
+        self, conn: psycopg.extensions.connection, time: float
+    ) -> list[VehicleToAdd]:
+        with conn.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT vehicle_id, soc_at_departure
                 FROM arriving_vehicles
                 WHERE arrival_time <= %s
                 """,
-                (arrival_time,),
+                (time,),
             )
             rows = cursor.fetchall()
         return rows
@@ -32,18 +31,17 @@ class VehicleToAddLoader(BaseLoader[VehicleToAdd]):
 
 
 class VehicleToRemoveLoader(BaseLoader[VehicleToRemove]):
-    def __init__(self, conn: psycopg.extensions.connection):
-        self.conn = conn
-
-    def _extract(self, departure_time) -> list[tuple[Any, ...]]:
-        with self.conn.cursor() as cursor:
+    def _extract(
+        self, conn: psycopg.extensions.connection, time: float
+    ) -> list[tuple[Any, ...]]:
+        with conn.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT vehicle_id
                 FROM departing_vehicles
                 WHERE departure_time <= %s
                 """,
-                (departure_time,),
+                (time,),
             )
             rows = cursor.fetchall()
         return rows
@@ -57,13 +55,11 @@ class VehicleToRemoveLoader(BaseLoader[VehicleToRemove]):
         )
 
 
-class ChargingInputConstructor(BaseInputLoader):
-    def __init__(self, conn: psycopg.extensions.connection):
-        self.vehicle_to_add_loader = VehicleToAddLoader(conn)
-        self.vehicle_to_remove_loader = VehicleToRemoveLoader(conn)
-
-    def load(self, time) -> ChargingInputs:
+class ChargingInputLoader(BaseInputLoader):
+    def load_input(
+        self, conn: psycopg.extensions.connection, time: float
+    ) -> ChargingInputs:
         return ChargingInputs(
-            vehicles_to_add=tuple(self.vehicle_to_add_loader.load(time)),
-            vehicles_to_remove=tuple(self.vehicle_to_remove_loader.load(time)),
+            vehicles_to_add=tuple(self.vehicle_to_add_loader.load(conn, time)),
+            vehicles_to_remove=tuple(self.vehicle_to_remove_loader.load(conn, time)),
         )

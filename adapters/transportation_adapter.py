@@ -1,5 +1,4 @@
-from traitlets import Any
-from adapters import ModelAdapter
+from adapters import BaseAdapter
 from models.outputs import (
     DepartedVehicle,
     TransportationOutputs,
@@ -8,29 +7,24 @@ from models.outputs import (
 from models.inputs import TransportationInputs
 import traci
 import re
-from adapters.helpers.sumo import EdgeToBuildingAssigner, TourIdLookup
 
 
-class SumoAdapter(ModelAdapter):
-    def __init__(
-        self,
-        name: str,
-        timestep_length: int,
-        sumo_config: str,
-    ):
-        super().__init__(name, timestep_length)
-        self.sumo_config = sumo_config
+class TransportationAdapter(BaseAdapter):
+    InputType = TransportationInputs
+    OutputType = TransportationOutputs
 
+    def __init__(self, config):
+        super().__init__(
+            name=config.model.transportation.name,
+            timestep_length=config.model.transportation.timestep_length,
+        )
+        self._sumo_config = config.model.transportation.sumo_config
         self._traci = None
-        self._current_time = 0.0
-
-    def current_time(self) -> float:
-        return self._current_time
 
     def initialize(self):
-        traci.start(["sumo", "-c", self.sumo_config])
+        traci.start(["sumo", "-c", self._sumo_config])
         self._traci = traci
-        self.timestep_length = traci.simulation.getDeltaT()
+        self.timestep_length = self._traci.simulation.getDeltaT()
 
     def read_outputs(self) -> TransportationOutputs:
         return TransportationOutputs(
@@ -42,20 +36,20 @@ class SumoAdapter(ModelAdapter):
         return tuple(
             DepartedVehicle(
                 vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                departing_time=self._current_time,
+                departing_time=self.model_time,
             )
-            for vid in traci.simulation.getDepartedIDList()
+            for vid in self._traci.simulation.getDepartedIDList()
         )
 
     def _get_arrived_vehicles(self) -> tuple[ArrivedVehicle, ...]:
         return tuple(
             ArrivedVehicle(
                 vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                soc_at_arrival=traci.vehicle.getBatteryCapacity(vid),
-                road_id=traci.vehicle.getRoadID(vid),
-                arrival_time=self._current_time,
+                soc_at_arrival=self._traci.vehicle.getBatteryCapacity(vid),
+                road_id=self._traci.vehicle.getRoadID(vid),
+                arrival_time=self.model_time,
             )
-            for vid in traci.simulation.getArrivedIDList()
+            for vid in self._traci.simulation.getArrivedIDList()
         )
 
     def read_inputs(self, inputs: TransportationInputs):
@@ -63,7 +57,7 @@ class SumoAdapter(ModelAdapter):
             self._set_vehicle_soc(str(vehicle_id), new_soc)
 
     def _set_vehicle_soc(self, vehicle_id: str, soc: float):
-        traci.vehicle.setParameter(
+        self._traci.vehicle.setParameter(
             vehicle_id, "device.battery.actualBatteryCapacity", str(soc * 100)
         )
 
@@ -76,4 +70,4 @@ class SumoAdapter(ModelAdapter):
         steps = int(dt / self.timestep_length)
         for _ in range(steps):
             self._traci.simulationStep()
-            self._current_time += self.timestep_length
+            self._model_time += self.timestep_length

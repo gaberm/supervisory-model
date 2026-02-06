@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from models.outputs.decorator import record
+from models.outputs.outputs_decorator import record
 
 
 @record(
     table="arrived_vehicles",
     key=("vehicle_id",),
+    indexed=("arrival_time",),
 )
 @dataclass(frozen=True)
 class ArrivedVehicle:
@@ -17,6 +18,7 @@ class ArrivedVehicle:
 @record(
     table="departed_vehicles",
     key=("vehicle_id",),
+    indexed=("departure_time",),
 )
 @dataclass(frozen=True)
 class DepartedVehicle:

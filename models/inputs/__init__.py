@@ -1,5 +1,5 @@
-from charging import VehicleToAdd, VehicleToRemove, ChargingInputs
-from transportation import VehicleSoc, TransportationInputs
+from models.inputs.charging_inputs import VehicleToAdd, VehicleToRemove, ChargingInputs
+from models.inputs.transportation_inputs import VehicleSoc, TransportationInputs
 
 __all__ = [
     "VehicleToAdd",

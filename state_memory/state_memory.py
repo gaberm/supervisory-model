@@ -11,7 +11,7 @@ class StateMemory:
     def connect(self):
         self.conn = psycopg.connect(self.db_url)
 
-    def create_table(self, cls):
+    def create_output_table(self, cls):
         sql = self._generate_create_table_sql(cls)
 
         with self.conn.cursor() as cur:
@@ -36,14 +36,14 @@ class StateMemory:
         );
         """.strip()
 
-    def insert_value(self, obj):
-        sql, values = self._generate_insert_values_sql(obj)
+    def insert_output(self, obj):
+        sql, values = self._generate_insert_sql(obj)
 
         with self.conn.cursor() as cur:
             cur.execute(sql, values)
         self.conn.commit()
 
-    def _generate_insert_values_sql(self, obj):
+    def _generate_insert_sql(self, obj):
         cls = obj.__class__
         meta = cls.__record__
         table = meta["table"]

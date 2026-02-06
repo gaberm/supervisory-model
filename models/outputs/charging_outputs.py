@@ -1,16 +1,17 @@
 from dataclasses import dataclass
-from models.outputs.decorator import record
+from models.outputs.outputs_decorator import record
 
 
 @record(
     table="charging_outputs",
-    key=("time_index",),
-    indexed=("vehicle_id",),
+    key=("vehicle_id",),
+    indexed=("stop_time",),
 )
 @dataclass(frozen=True)
 class VehicleSoc:
     vehicle_id: int
     soc: float
+    stop_time: float
 
 
 @dataclass(frozen=True)

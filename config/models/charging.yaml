@@ -1,0 +1,3 @@
+name: charging_adapter
+timestep_length: 60.0 # in seconds
+charging_rate: 1.0

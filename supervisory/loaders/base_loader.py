@@ -1,15 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
-from psycopg2 import psycopg
+import psycopg2 as psycopg
 
 T = TypeVar("T")
 
 
 class BaseLoader(ABC, Generic[T]):
     """Base class for loading domain objects from database."""
-
-    def __init__(self, conn: psycopg.extensions.connection):
-        self.conn = conn
 
     @abstractmethod
     def _extract(self, **kwargs) -> list[tuple[Any, ...]]:
@@ -25,7 +22,7 @@ class BaseLoader(ABC, Generic[T]):
         """Build domain objects from rows."""
         pass
 
-    def load(self, **kwargs) -> list[T]:
+    def load_input(self, **kwargs) -> list[T]:
         """Main entry point: extract, transform, build."""
         rows = self._extract(**kwargs)
         rows = self._transform(rows)
@@ -39,6 +36,6 @@ class BaseInputLoader(ABC):
         self.conn = conn
 
     @abstractmethod
-    def load(self, **kwargs):
+    def load_input(self, **kwargs):
         """Load and aggregate all inputs."""
         pass
