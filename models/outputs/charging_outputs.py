@@ -3,17 +3,30 @@ from models.outputs.outputs_decorator import record
 
 
 @record(
-    table="charging_outputs",
+    table="charging",
     key=("vehicle_id",),
-    indexed=("stop_time",),
+    indexed=("timestamp",),
 )
 @dataclass(frozen=True)
-class VehicleSoc:
+class ChargingState:
     vehicle_id: int
     soc: float
-    stop_time: float
+    timestamp: float
+
+
+@record(
+    table="charged",
+    key=("vehicle_id",),
+    indexed=("ended_at",),
+)
+@dataclass(frozen=True)
+class ChargedState:
+    vehicle_id: int
+    soc: float
+    ended_at: float
 
 
 @dataclass(frozen=True)
 class ChargingOutputs:
-    vehicles_soc: tuple[VehicleSoc, ...]
+    charging: tuple[ChargingState, ...]
+    charged: tuple[ChargedState, ...]

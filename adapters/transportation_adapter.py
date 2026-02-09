@@ -16,7 +16,6 @@ class TransportationAdapter(BaseAdapter):
     def __init__(self, config):
         super().__init__(
             name=config.model.transportation.name,
-            timestep_length=config.model.transportation.timestep_length,
         )
         self._sumo_config = config.model.transportation.sumo_config
         self._traci = None
@@ -71,3 +70,8 @@ class TransportationAdapter(BaseAdapter):
         for _ in range(steps):
             self._traci.simulationStep()
             self._model_time += self.timestep_length
+
+    def terminate(self):
+        if self._traci is not None:
+            self._traci.close()
+            self._traci = None

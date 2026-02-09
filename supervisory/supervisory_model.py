@@ -1,10 +1,15 @@
-from dataclasses import dataclass
 from typing import Dict, List, Type
-import psycopg
 from adapters import BaseAdapter, ChargingAdapter, TransportationAdapter
 from state_memory import StateMemory
-from supervisory.loaders.base_loader import BaseInputLoader
-from supervisory.loaders import ChargingInputLoader, TransportationInputLoader
+from supervisory.loaders import (
+    BaseInputLoader,
+    ChargingInputLoader,
+    TransportationInputLoader,
+)
+from supervisory.time import TimeRange
+import logging
+
+logger = logging.getLogger(__name__)
 
 ADAPTERS: Dict[str, Type[BaseAdapter]] = {
     "charging": ChargingAdapter,
@@ -22,9 +27,7 @@ class SupervisoryModel:
         self.adapters = self._create_adapters(config)
         self.state_memory = StateMemory(config.db.url)
         self._create_tables()
-
-        self.global_time = 0.0
-        self.global_timestep_length = self._global_timestep_length()
+        self.max_global_time = config.model.max_global_time
 
         self.lagging_adapter_names: List[str] = []
 
@@ -35,9 +38,6 @@ class SupervisoryModel:
             if value is not None:
                 adapters[key] = AdapterClass(value)
         return adapters
-
-    def _global_timestep_length(self) -> float:
-        return min(adapter.timestep_length for adapter in self.adapters.values())
 
     def initialize_adapters(self):
         for adapter in self.adapters.values():
@@ -54,15 +54,21 @@ class SupervisoryModel:
 
     def write_inputs(self):
         for adapter_name in self.lagging_adapter_names:
+            time_interval = TimeRange(
+                start_time=self.adapters[adapter_name].model_time,
+                end_time=self.adapters[adapter_name].model_time
+                + self.adapters[adapter_name].timestep_length,
+            )
             inputs = INPUTS_LOADERS[adapter_name].load_input(
-                self.state_memory.conn, self.global_time
+                self.state_memory.conn, time_interval
             )
             self.adapters[adapter_name].write_inputs(inputs)
 
-    def advance_components(self, dt: float):
-        for adapter in self.adapters.values():
-            adapter.advance(dt)
-        self.global_time += dt
+    def advance_components(self):
+        for adapter_name in self.lagging_adapter_names:
+            self.adapters[adapter_name].advance(
+                self.adapters[adapter_name].timestep_length
+            )
 
     def read_outputs(self):
         for adapter_name in self.lagging_adapter_names:
@@ -70,14 +76,31 @@ class SupervisoryModel:
             self.state_memory.insert_output(output)
 
     def find_lagging_adapters(self):
-        min_model_time = min(adapter.model_time for adapter in self.adapters.values())
+        next_step_time = min(
+            adapter.model_time + adapter.timestep_length
+            for adapter in self.adapters.values()
+        )
         self.lagging_adapter_names = [
             name
             for name, adapter in self.adapters.items()
-            if adapter.model_time == min_model_time
+            if adapter.model_time + adapter.timestep_length
+            == next_step_time
+            <= self.max_global_time
         ]
+
+    def run(self):
+        logger.info("Starting simulation run.")
+        self.initialize_adapters()
+        self.find_lagging_adapters()
+        while self.lagging_adapter_names:
+            self.write_inputs()
+            self.advance_components()
+            self.read_outputs()
+            self.find_lagging_adapters()
+        self.terminate()
 
     def terminate(self):
         for adapter in self.adapters.values():
             adapter.terminate()
         self.state_memory.close()
+        logger.info("Simulation run completed.")
