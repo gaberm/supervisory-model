@@ -1,2 +1,12 @@
 .DS_Store
 data/inputs
+adapters/__pycache__
+models/__pycache__
+models/inputs/__pycache__
+models/outputs/__pycache__
+outputs
+state_memory/__pycache__
+supervisory/__pycache__
+supervisory/loaders/__pycache__
+supervisory/time/__pycache__
+test.ipynb
