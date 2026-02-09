@@ -7,7 +7,7 @@ from supervisory.supervisory_model import SupervisoryModel
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(config):
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         handlers=[logging.StreamHandler()],
     )

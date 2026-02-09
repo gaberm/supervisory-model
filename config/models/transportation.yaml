@@ -1,2 +1,2 @@
-name: transportation_adapter
-sumo_config: path/to/sumo/config/file.sumocfg
+name: transportation
+sumo_config: /Users/maltegaber/Downloads/Transportation Model/main.sumocfg

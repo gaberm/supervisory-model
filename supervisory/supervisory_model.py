@@ -25,16 +25,16 @@ INPUTS_LOADERS: Dict[Type, Type[BaseInputLoader]] = {
 class SupervisoryModel:
     def __init__(self, config):
         self.adapters = self._create_adapters(config)
-        self.state_memory = StateMemory(config.db.url)
+        self.state_memory = StateMemory(config.db.db_url)
         self._create_tables()
-        self.max_global_time = config.model.max_global_time
+        self.max_global_time = config.simulation.max_global_time
 
         self.lagging_adapter_names: List[str] = []
 
     def _create_adapters(self, config) -> Dict[str, BaseAdapter]:
         adapters = {}
         for key, AdapterClass in ADAPTERS.items():
-            value = getattr(config.model, key, None)
+            value = config.models.get(key)
             if value is not None:
                 adapters[key] = AdapterClass(value)
         return adapters

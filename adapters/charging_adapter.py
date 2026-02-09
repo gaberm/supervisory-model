@@ -1,7 +1,6 @@
-from traitlets import Any
 from adapters import BaseAdapter
-from ..models.charging_model import ChargingModel
-from models.outputs import ChargedState, ChargingState, ChargingResult, ChargingOutputs
+from models.charging_model import ChargingModel
+from models.outputs import ChargedState, ChargingState, ChargingOutputs
 from models.inputs import ChargingInputs
 
 

@@ -1,6 +1,7 @@
 defaults:
 - _self_
+- db: db
 - models:
   - charging
   - transportation
-- seed: 42
+- simulation: simulation

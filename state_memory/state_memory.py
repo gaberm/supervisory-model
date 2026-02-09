@@ -1,6 +1,6 @@
 import dataclasses
 import psycopg2 as psycopg
-from type_mapping import sql_type
+from .type_mapping import sql_type
 
 
 class StateMemory:
