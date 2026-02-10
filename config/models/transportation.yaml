@@ -1,2 +1,3 @@
-name: transportation
-sumo_config: /Users/maltegaber/Downloads/Transportation Model/main.sumocfg
+transportation:
+  name: transportation
+  sumo_config: /Users/maltegaber/Downloads/Transportation Model/main.sumocfg

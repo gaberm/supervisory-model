@@ -10,10 +10,10 @@ class ChargingAdapter(BaseAdapter):
 
     def __init__(self, config):
         super().__init__(
-            name=config.model.transportation.name,
-            timestep_length=config.model.transportation.timestep_length,
+            name=config.models.charging.name,
+            timestep_length=config.models.charging.timestep_length,
         )
-        self._charging_rate = config.model.transportation.charging_rate
+        self._charging_rate = config.models.charging.charging_rate
         self._charging_model = None
 
         self._charged_vehicles = None

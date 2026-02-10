@@ -9,20 +9,20 @@ class BaseAdapter(ABC):
 
     def __init__(self, name: str, timestep_length: Optional[float] = None):
         self.name = name
-        self.timestep_length = timestep_length
-        self.model_time = 0.0
+        self._timestep_length = timestep_length
+        self._model_time = 0.0
 
     @property
     def model_time(self) -> float:
         """Return the model's current simulation time in global time units."""
-        return self.model_time
+        return self._model_time
 
     @property
     def timestep_length(self) -> float:
         """Return the model's timestep length in global time units."""
-        if self.timestep_length is None:
+        if self._timestep_length is None:
             raise ValueError("timestep_length not set.")
-        return self.timestep_length
+        return self._timestep_length
 
     @abstractmethod
     def initialize(self):

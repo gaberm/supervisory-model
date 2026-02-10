@@ -18,7 +18,7 @@ def record(
 
     def decorator(cls):
         # --- Attach metadata only ---
-        cls.__output__ = {
+        cls.__record__ = {
             "table": table,
             "key": key,
             "indexed": indexed,

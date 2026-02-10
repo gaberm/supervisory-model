@@ -36,7 +36,7 @@ class SupervisoryModel:
         for key, AdapterClass in ADAPTERS.items():
             value = config.models.get(key)
             if value is not None:
-                adapters[key] = AdapterClass(value)
+                adapters[key] = AdapterClass(config)
         return adapters
 
     def initialize_adapters(self):
@@ -46,7 +46,7 @@ class SupervisoryModel:
     def _create_tables(self):
         for adapter in self.adapters.values():
             if adapter.OutputType is not None:
-                self.state_memory.create_output_table(adapter.OutputType)
+                self.state_memory.create_output_tables(adapter.OutputType)
             else:
                 raise ValueError(
                     f"Adapter {adapter.name} does not have an OutputType defined."

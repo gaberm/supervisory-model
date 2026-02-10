@@ -1,3 +1,4 @@
-name: charging
-timestep_length: 60.0 # in seconds
-charging_rate: 1.0
+charging:
+  name: charging
+  timestep_length: 60.0 # in seconds
+  charging_rate: 1.0

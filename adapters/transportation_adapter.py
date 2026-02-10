@@ -15,15 +15,16 @@ class TransportationAdapter(BaseAdapter):
 
     def __init__(self, config):
         super().__init__(
-            name=config.model.transportation.name,
+            name=config.models.transportation.name,
+            timestep_length=None,
         )
-        self._sumo_config = config.model.transportation.sumo_config
+        self._sumo_config = config.models.transportation.sumo_config
         self._traci = None
 
     def initialize(self):
         traci.start(["sumo", "-c", self._sumo_config])
         self._traci = traci
-        self.timestep_length = self._traci.simulation.getDeltaT()
+        self._timestep_length = self._traci.simulation.getDeltaT()
 
     def read_outputs(self) -> TransportationOutputs:
         return TransportationOutputs(
@@ -51,7 +52,7 @@ class TransportationAdapter(BaseAdapter):
             for vid in self._traci.simulation.getArrivedIDList()
         )
 
-    def read_inputs(self, inputs: TransportationInputs):
+    def write_inputs(self, inputs: TransportationInputs):
         for vehicle_id, new_soc in inputs.vehicles_soc:
             self._set_vehicle_soc(str(vehicle_id), new_soc)
 
