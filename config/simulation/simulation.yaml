@@ -1,1 +1,2 @@
-max_global_time: 3600
+max_global_time: 86400
+reset_tables: true

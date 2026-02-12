@@ -7,6 +7,21 @@ class StateMemory:
     def __init__(self, db_url: str):
         self.conn = psycopg.connect(db_url)
 
+    def reset_tables(self, drop_tables: bool = False):
+        with self.conn.cursor() as cur:
+            if drop_tables:
+                cur.execute(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    """
+                )
+                tables = cur.fetchall()
+                for (table_name,) in tables:
+                    cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+            self.conn.commit()
+
     def create_output_tables(self, cls):
         for sql in self._generate_create_table_sql(cls):
             with self.conn.cursor() as cur:
@@ -50,17 +65,31 @@ class StateMemory:
                 );
         """.strip()
 
-    def insert_output(self, cls):
-        output_cls = self._extract_output_classes(cls)
-        for cls in output_cls:
-            sql = self._generate_insert_sql(cls)
-            values = self._extract_values(cls)
-            with self.conn.cursor() as cur:
-                cur.execute(sql, values)
-            self.conn.commit()
+    def insert_output(self, output):
+        for field in dataclasses.fields(output):
+            value = getattr(output, field.name)
+            if not value:
+                continue
+            if isinstance(value, tuple):
+                for record in value:
+                    self._insert_record(record)
+            elif dataclasses.is_dataclass(value):
+                self._insert_record(value)
 
-    def _extract_values(self, cls) -> list:
-        return [getattr(cls, field.name) for field in dataclasses.fields(cls)]
+    def _insert_record(self, record):
+        record_cls = type(record)
+        if not hasattr(record_cls, "__record__"):
+            raise ValueError(
+                f"Record {record_cls.__name__} is missing __record__ metadata."
+            )
+        sql = self._generate_insert_sql(record_cls)
+        values = self._extract_values(record)
+        with self.conn.cursor() as cur:
+            cur.execute(sql, values)
+        self.conn.commit()
+
+    def _extract_values(self, record) -> list:
+        return [getattr(record, field.name) for field in dataclasses.fields(record)]
 
     def _generate_insert_sql(self, cls) -> str:
         table = cls.__record__["table"]
@@ -68,3 +97,6 @@ class StateMemory:
         placeholders = ", ".join(["%s"] * len(fields))
         sql = f"INSERT INTO {table} ({', '.join(fields)}) VALUES ({placeholders})"
         return sql
+
+    def close_conn(self):
+        self.conn.close()

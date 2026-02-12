@@ -7,6 +7,7 @@ from models.outputs import (
 from models.inputs import TransportationInputs
 import traci
 import re
+from traci.constants import VAR_ROAD_ID
 
 
 class TransportationAdapter(BaseAdapter):
@@ -20,6 +21,8 @@ class TransportationAdapter(BaseAdapter):
         )
         self._sumo_config = config.models.transportation.sumo_config
         self._traci = None
+
+        self._last_edge_by_vid: dict[str, str] = {}
 
     def initialize(self):
         traci.start(["sumo", "-c", self._sumo_config])
@@ -36,7 +39,7 @@ class TransportationAdapter(BaseAdapter):
         return tuple(
             DepartedVehicle(
                 vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                departing_time=self.model_time,
+                departure_time=self.model_time,
             )
             for vid in self._traci.simulation.getDepartedIDList()
         )
@@ -45,8 +48,13 @@ class TransportationAdapter(BaseAdapter):
         return tuple(
             ArrivedVehicle(
                 vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                soc_at_arrival=self._traci.vehicle.getBatteryCapacity(vid),
-                road_id=self._traci.vehicle.getRoadID(vid),
+                # soc_at_arrival=float(
+                #     self._traci.vehicle.getParameter(
+                #         vid, "device.battery.actualBatteryCapacity"
+                #     )
+                # ),
+                soc_at_arrival=0.0,
+                road_id=self._last_edge_by_vid.get(vid, "unknown"),
                 arrival_time=self.model_time,
             )
             for vid in self._traci.simulation.getArrivedIDList()
@@ -70,7 +78,21 @@ class TransportationAdapter(BaseAdapter):
         steps = int(dt / self.timestep_length)
         for _ in range(steps):
             self._traci.simulationStep()
+            self._subscribe_to_new_vehicles()
+            self._store_vehicle_positions()
             self._model_time += self.timestep_length
+
+    def _store_vehicle_positions(self):
+        # Read subscriptions and cache the last edge.
+        for vid in self._traci.vehicle.getIDList():
+            values = self._traci.vehicle.getSubscriptionResults(vid)
+            road_id = values.get(VAR_ROAD_ID) if values else None
+            if road_id:
+                self._last_edge_by_vid[vid] = road_id
+
+    def _subscribe_to_new_vehicles(self):
+        for vid in self._traci.simulation.getDepartedIDList():
+            self._traci.vehicle.subscribe(vid, (VAR_ROAD_ID,))
 
     def terminate(self):
         if self._traci is not None:

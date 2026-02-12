@@ -11,7 +11,7 @@ from models.outputs.outputs_decorator import record
 class ArrivedVehicle:
     vehicle_id: int
     soc_at_arrival: float
-    road_id: int
+    road_id: str
     arrival_time: float
 
 

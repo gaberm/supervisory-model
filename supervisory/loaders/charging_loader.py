@@ -14,7 +14,7 @@ class VehicleToAddLoader(BaseLoader[VehicleToAdd]):
             cursor.execute(
                 """
                 SELECT vehicle_id, soc_at_arrival, arrival_time
-                FROM arriving_vehicles
+                FROM arrived_vehicles
                 WHERE arrival_time >= %s AND arrival_time < %s
                 """,
                 (time_interval.start_time, time_interval.end_time),
@@ -68,7 +68,7 @@ class VehicleToRemoveLoader(BaseLoader[VehicleToRemove]):
             cursor.execute(
                 """
                 SELECT vehicle_id
-                FROM departing_vehicles
+                FROM departed_vehicles
                 WHERE departure_time >= %s AND departure_time < %s
                 """,
                 (time_interval.start_time, time_interval.end_time),
@@ -99,7 +99,7 @@ class ChargingInputLoader(BaseInputLoader):
 
     @classmethod
     def from_config(cls, config):
-        return cls(charge_rate=config.model.charging.charge_rate)
+        return cls(charge_rate=config.models.charging.charging_rate)
 
     def load_input(
         self, conn: psycopg.extensions.connection, time_interval: TimeRange

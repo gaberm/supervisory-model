@@ -11,6 +11,8 @@ def main(config):
         handlers=[logging.StreamHandler()],
     )
     model = SupervisoryModel(config)
+    if getattr(config.simulation, "reset_tables", False):
+        model.reset_state_memory(drop_tables=True)
     model.run()
 
 

@@ -9,12 +9,14 @@ class BaseLoader(ABC, Generic[T]):
     """Base class for loading domain objects from database."""
 
     @abstractmethod
-    def _extract(**kwargs) -> list[tuple[Any, ...]]:
+    def _extract(*args, **kwargs) -> list[tuple[Any, ...]]:
         """Extract raw data from database."""
         pass
 
     @abstractmethod
-    def _transform(rows: list[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
+    def _transform(
+        rows: list[tuple[Any, ...]], *args, **kwargs
+    ) -> list[tuple[Any, ...]]:
         """Optional transformation step. Override if needed."""
         return rows
 
@@ -23,12 +25,12 @@ class BaseLoader(ABC, Generic[T]):
         """Build domain objects from rows."""
         pass
 
-    @abstractmethod
-    def load_input(**kwargs) -> list[T]:
-        """Main entry point: ex tract, transform, build."""
-        rows = BaseLoader._extract(**kwargs)
-        rows = BaseLoader._transform(rows, **kwargs)
-        return BaseLoader._build(rows)
+    @classmethod
+    def load_input(cls, *args, **kwargs) -> list[T]:
+        """Main entry point: extract, transform, build."""
+        rows = cls._extract(*args, **kwargs)
+        rows = cls._transform(rows, *args, **kwargs)
+        return cls._build(rows)
 
 
 class BaseInputLoader(ABC):

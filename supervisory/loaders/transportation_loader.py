@@ -13,9 +13,9 @@ class VehicleSocLoader(BaseLoader[VehicleSoc]):
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT vehicle_id, soc, stop_time
-                FROM vehicle_soc
-                WHERE stop_time >= %s AND stop_time < %s
+                SELECT vehicle_id, soc, ended_at
+                FROM charged_vehicles
+                WHERE ended_at >= %s AND ended_at < %s
                 """,
                 (time_range.start_time, time_range.end_time),
             )
@@ -46,6 +46,14 @@ class VehicleSocLoader(BaseLoader[VehicleSoc]):
             for row in rows
         )
 
+    @staticmethod
+    def load_input(
+        conn: psycopg.extensions.connection, time_range: TimeRange, charge_rate: float
+    ) -> VehicleSoc:
+        rows = VehicleSocLoader._extract(conn, time_range)
+        rows = VehicleSocLoader._transform(rows, time_range, charge_rate)
+        return VehicleSocLoader._build(rows)
+
 
 class TransportationInputLoader(BaseInputLoader):
     def __init__(self, charge_rate: float):
@@ -53,7 +61,7 @@ class TransportationInputLoader(BaseInputLoader):
 
     @classmethod
     def from_config(cls, config):
-        return cls(charge_rate=config.model.charging.charge_rate)
+        return cls(charge_rate=config.models.charging.charging_rate)
 
     def load_input(
         self, conn: psycopg.extensions.connection, time_range: TimeRange

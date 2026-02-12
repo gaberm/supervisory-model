@@ -1,4 +1,4 @@
-from .charging_outputs import ChargedState, ChargingState, ChargingOutputs
+from .charging_outputs import ChargingVehicle, ChargedVehicle, ChargingOutputs
 from .transportation_outputs import (
     ArrivedVehicle,
     DepartedVehicle,
@@ -6,8 +6,8 @@ from .transportation_outputs import (
 )
 
 __all__ = [
-    "ChargedState",
-    "ChargingState",
+    "ChargingVehicle",
+    "ChargedVehicle",
     "ChargingOutputs",
     "ArrivedVehicle",
     "DepartedVehicle",
