@@ -8,12 +8,20 @@ class ChargingAdapter(BaseAdapter):
     InputType = ChargingInputs
     OutputType = ChargingOutputs
 
-    def __init__(self, config):
-        super().__init__(
-            name=config.models.charging.name,
-            timestep_length=config.models.charging.timestep_length,
+    @classmethod
+    def from_config(cls, model_cfg) -> "ChargingAdapter":
+        return cls(
+            name=model_cfg.name,
+            timestep_length=model_cfg.timestep_length,
+            charging_rate=model_cfg.charging_rate,
         )
-        self._charging_rate = config.models.charging.charging_rate
+
+    def __init__(self, name, timestep_length, charging_rate):
+        super().__init__(
+            name=name,
+            timestep_length=timestep_length,
+        )
+        self._charging_rate = charging_rate
         self._charging_model = None
 
         self._charged_vehicles = None

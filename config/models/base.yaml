@@ -1,0 +1,8 @@
+base_model:
+  # --- federate parameters ---
+  name: ???
+  routing_key: ???
+  queue_name: ???
+  adapter: ???
+
+  # --- model parameters ---

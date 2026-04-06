@@ -1,6 +1,7 @@
 .DS_Store
-data/inputs
+__pycache__
 adapters/__pycache__
+data/inputs
 models/__pycache__
 models/inputs/__pycache__
 models/outputs/__pycache__

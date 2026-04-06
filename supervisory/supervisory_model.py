@@ -1,6 +1,7 @@
 from typing import Dict, List, Type
 from adapters import BaseAdapter, ChargingAdapter, TransportationAdapter
 from state_memory import StateMemory
+from supervisory.comm.rabbitmq_client import RabbitMQClient
 from supervisory.loaders import (
     BaseInputLoader,
     ChargingInputLoader,
@@ -12,10 +13,10 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-ADAPTERS: Dict[str, Type[BaseAdapter]] = {
-    "charging": ChargingAdapter,
-    "transportation": TransportationAdapter,
-}
+# ADAPTERS: Dict[str, Type[BaseAdapter]] = {
+#     "charging": ChargingAdapter,
+#     "transportation": TransportationAdapter,
+# }
 
 INPUTS_LOADERS: Dict[str, Type[BaseInputLoader]] = {
     "charging": ChargingInputLoader,
@@ -24,14 +25,30 @@ INPUTS_LOADERS: Dict[str, Type[BaseInputLoader]] = {
 
 
 class SupervisoryModel:
+    @classmethod
+    def from_config(cls, config):
+        return cls(config)
+
     def __init__(self, config):
         self.adapters = self._create_adapters(config)
         self.input_loaders = self._create_input_loaders(config)
         self.state_memory = StateMemory(config.db.db_url)
         self.max_global_time = config.simulation.max_global_time
+        self.rabbitmq_client = RabbitMQClient(
+            host=config.rabbitmq.host,
+            port=config.rabbitmq.port,
+            username=config.rabbitmq.username,
+            password=config.rabbitmq.password,
+        )
 
         self.lagging_adapter_names: List[str] = []
         self._min_model_time = 0.0
+        self.adapter_model_times: Dict[str, float] = {
+            name: 0.0 for name in self.adapters.keys()
+        }
+        self.adapter_time_steps: Dict[str, float] = {
+            name: adapter.timestep_length for name, adapter in self.adapters.items()
+        }
 
     def _create_adapters(self, config) -> Dict[str, BaseAdapter]:
         adapters = {}
@@ -61,7 +78,21 @@ class SupervisoryModel:
 
     def initialize_adapters(self):
         for adapter in self.adapters.values():
-            adapter.initialize()
+            self.rabbitmq_client.initialize(
+                adapter.worker_name, on_ack=lambda response: None
+            )
+
+    def initialize_adapters(self):
+        responses = {}
+
+        for adapter in self.adapters.values():
+
+            def on_ack(response, name=adapter.worker_name):
+                responses[name] = response
+
+            self.rabbitmq_client.initialize(adapter.worker_name, on_ack=on_ack)
+
+        self._wait_for_all(responses, self.lagging_adapter_names, "initialize_adapters")
 
     def _create_tables(self):
         for adapter in self.adapters.values():
@@ -72,7 +103,16 @@ class SupervisoryModel:
                     f"Adapter {adapter.name} does not have an OutputType defined."
                 )
 
+    def _wait_for_all(self, responses: dict, expected: list, operation: str):
+        while len(responses) < len(expected):
+            self.rabbitmq_client.connection.process_data_events(time_limit=1)
+        failed = {name: r.error for name, r in responses.items() if not r.success}
+        if failed:
+            details = "\n".join(f"  {name}: {error}" for name, error in failed.items())
+            raise RuntimeError(f"{operation} failed for adapters:\n{details}")
+
     def write_inputs(self):
+        responses = {}
         for adapter_name in self.lagging_adapter_names:
             time_interval = TimeRange(
                 start_time=self.adapters[adapter_name].model_time,
@@ -82,34 +122,58 @@ class SupervisoryModel:
             inputs = self.input_loaders[adapter_name].load_input(
                 self.state_memory.conn, time_interval
             )
-            self.adapters[adapter_name].write_inputs(inputs)
+
+            def on_ack(response, name=adapter_name):
+                responses[name] = response
+
+            self.rabbitmq_client.write_input(
+                adapter_name, inputs.to_dict(), on_ack=on_ack
+            )
+        self._wait_for_all(responses, self.lagging_adapter_names, "write_inputs")
 
     def advance_components(self):
+        responses = {}
         for adapter_name in self.lagging_adapter_names:
-            self.adapters[adapter_name].advance(
-                self.adapters[adapter_name].timestep_length
-            )
+            timestep = self.adapters[adapter_name].timestep_length
+
+            def on_ack(response, name=adapter_name):
+                responses[name] = response
+
+            self.rabbitmq_client.advance(adapter_name, timestep, on_ack=on_ack)
+        self._wait_for_all(responses, self.lagging_adapter_names, "advance_components")
+        for adapter_name in self.lagging_adapter_names:
+            self.adapter_model_times[adapter_name] += self.adapters[
+                adapter_name
+            ].timestep_length
 
     def read_outputs(self):
+        responses = {}
         for adapter_name in self.lagging_adapter_names:
-            output = self.adapters[adapter_name].read_outputs()
+
+            def on_ack(response, name=adapter_name):
+                responses[name] = response
+
+            self.rabbitmq_client.read_outputs(adapter_name, on_ack=on_ack)
+        self._wait_for_all(responses, self.lagging_adapter_names, "read_outputs")
+        for adapter_name in self.lagging_adapter_names:
+            output = self.adapters[adapter_name].OutputType.from_dict(
+                responses[adapter_name].payload
+            )
             self.state_memory.insert_output(output)
 
     def find_lagging_adapters(self):
         next_step_time = min(
-            adapter.model_time + adapter.timestep_length
-            for adapter in self.adapters.values()
+            self.adapter_model_times[name] + self.adapter_time_steps[name]
+            for name in self.lagging_adapter_names
         )
         self.lagging_adapter_names = [
             name
-            for name, adapter in self.adapters.items()
-            if adapter.model_time + adapter.timestep_length
+            for name in self.adapters.keys()
+            if self.adapter_model_times[name] + self.adapter_time_steps[name]
             == next_step_time
             <= self.max_global_time
         ]
-        self._min_model_time = min(
-            adapter.model_time for adapter in self.adapters.values()
-        )
+        self._min_model_time = min(self.adapter_model_times.values())
 
     def run(self):
         logger.info("Starting simulation run.")

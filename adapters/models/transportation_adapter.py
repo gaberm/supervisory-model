@@ -14,12 +14,20 @@ class TransportationAdapter(BaseAdapter):
     InputType = TransportationInputs
     OutputType = TransportationOutputs
 
-    def __init__(self, config):
-        super().__init__(
-            name=config.models.transportation.name,
-            timestep_length=None,
+    @classmethod
+    def from_config(cls, model_cfg) -> "TransportationAdapter":
+        return cls(
+            name=model_cfg.name,
+            timestep_length=model_cfg.timestep_length,
+            sumo_config=model_cfg.sumo_config,
         )
-        self._sumo_config = config.models.transportation.sumo_config
+
+    def __init__(self, name, timestep_length, sumo_config):
+        super().__init__(
+            name=name,
+            timestep_length=timestep_length,
+        )
+        self._sumo_config = sumo_config
         self._traci = None
 
         self._last_edge_by_vid: dict[str, str] = {}

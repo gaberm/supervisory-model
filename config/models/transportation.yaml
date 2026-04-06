@@ -1,3 +1,9 @@
 transportation:
+  # --- federate parameters ---
   name: transportation
+  routing_key: transportation
+  queue_name: transportation_queue
+  adapter: TransportationAdapter
+
+  # --- model parameters ---
   sumo_config: /Users/maltegaber/Downloads/Transportation Model/main.sumocfg

@@ -1,4 +1,10 @@
 charging:
+  # --- federate parameters ---
   name: charging
+  routing_key: charging
+  queue_name: charging_queue
+  adapter: ChargingAdapter
+
+  # --- model parameters ---
   timestep_length: 60.0 # in seconds
   charging_rate: 1.0
