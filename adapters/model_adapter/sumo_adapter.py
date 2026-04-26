@@ -1,19 +1,17 @@
 from adapters import BaseAdapter
-from models.outputs import (
-    DepartedVehicle,
-    TransportationOutputs,
-    ArrivedVehicle,
+from records import (
+    ArrivedVehicleRecord,
+    DepartedVehicleRecord,
+    ModelOutput,
+    VehicleStateRecord,
 )
 from models.inputs import TransportationInputs
+from records.base_record import ShapeType
 import traci
-import re
 from traci.constants import VAR_ROAD_ID
 
 
 class TransportationAdapter(BaseAdapter):
-    InputType = TransportationInputs
-    OutputType = TransportationOutputs
-
     @classmethod
     def from_config(cls, model_cfg) -> "TransportationAdapter":
         return cls(
@@ -37,35 +35,55 @@ class TransportationAdapter(BaseAdapter):
         self._traci = traci
         self._timestep_length = self._traci.simulation.getDeltaT()
 
-    def read_outputs(self) -> TransportationOutputs:
-        return TransportationOutputs(
-            departed_vehicles=self._get_departed_vehicles(),
-            arrived_vehicles=self._get_arrived_vehicles(),
-        )
+    def read_outputs(self) -> ModelOutput:
+        output = ModelOutput()
+        output.add_many(self._get_arrived_vehicles())
+        output.add_many(self._get_departed_vehicles())
+        output.add_many(self._get_vehicle_states())
+        return output
 
-    def _get_departed_vehicles(self) -> tuple[DepartedVehicle, ...]:
-        return tuple(
-            DepartedVehicle(
-                vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                departure_time=self.model_time,
-            )
-            for vid in self._traci.simulation.getDepartedIDList()
+    def _vehicle_coord(self, v_id: str) -> list[tuple[float, float]]:
+        lon, lat = self._traci.simulation.convertGeo(
+            *self._traci.vehicle.getPosition(v_id)
         )
+        return [(lat, lon)]
 
-    def _get_arrived_vehicles(self) -> tuple[ArrivedVehicle, ...]:
+    def _get_arrived_vehicles(self) -> tuple[ArrivedVehicleRecord, ...]:
         return tuple(
-            ArrivedVehicle(
-                vehicle_id=int(re.sub(r"^(person_|truck_)", "", vid)),
-                # soc_at_arrival=float(
-                #     self._traci.vehicle.getParameter(
-                #         vid, "device.battery.actualBatteryCapacity"
-                #     )
-                # ),
+            ArrivedVehicleRecord(
+                global_time=self.model_time,
+                shape_type=ShapeType.POINT,
+                shape_coord=self._vehicle_coord(v_id),
+                vehicle_id=v_id,
+                road_id=self._last_edge_by_vid.get(v_id, "unknown"),
                 soc_at_arrival=0.0,
-                road_id=self._last_edge_by_vid.get(vid, "unknown"),
-                arrival_time=self.model_time,
             )
-            for vid in self._traci.simulation.getArrivedIDList()
+            for v_id in self._traci.simulation.getArrivedIDList()
+        )
+
+    def _get_departed_vehicles(self) -> tuple[DepartedVehicleRecord, ...]:
+        return tuple(
+            DepartedVehicleRecord(
+                global_time=self.model_time,
+                shape_type=ShapeType.POINT,
+                shape_coord=self._vehicle_coord(v_id),
+                vehicle_id=v_id,
+                road_id=self._last_edge_by_vid.get(v_id, "unknown"),
+            )
+            for v_id in self._traci.simulation.getDepartedIDList()
+        )
+
+    def _get_vehicle_states(self) -> tuple[VehicleStateRecord, ...]:
+        return tuple(
+            VehicleStateRecord(
+                global_time=self.model_time,
+                shape_type=ShapeType.POINT,
+                shape_coord=self._vehicle_coord(v_id),
+                vehicle_id=v_id,
+                road_id=self._last_edge_by_vid.get(v_id, "unknown"),
+                speed=self._traci.vehicle.getSpeed(v_id),
+            )
+            for v_id in self._traci.vehicle.getIDList()
         )
 
     def write_inputs(self, inputs: TransportationInputs):

@@ -1,6 +1,6 @@
 from adapters import BaseAdapter
 from models.charging_model import ChargingModel
-from models.outputs import ChargingVehicle, ChargedVehicle, ChargingOutputs
+from records import ChargingVehicleRecord, ChargedVehicleRecord, ChargingOutputs
 from models.inputs import ChargingInputs
 
 
@@ -35,10 +35,10 @@ class ChargingAdapter(BaseAdapter):
             charged_vehicles=self._charged_vehicles or (),
         )
 
-    def _get_charging_vehicles(self) -> tuple[ChargingVehicle, ...]:
+    def _get_charging_vehicles(self) -> tuple[ChargingVehicleRecord, ...]:
         outputs = self._charging_model.get_all_soc()
         return tuple(
-            ChargingVehicle(
+            ChargingVehicleRecord(
                 vehicle_id=vehicle_id,
                 soc=soc,
                 timestamp=self.model_time,
@@ -57,7 +57,7 @@ class ChargingAdapter(BaseAdapter):
 
     def _save_charged_vehicles(self, inputs: ChargingInputs):
         self._charged_vehicles = tuple(
-            ChargedVehicle(
+            ChargedVehicleRecord(
                 vehicle_id=vehicle.vehicle_id,
                 soc=self._charging_model.get_soc(vehicle.vehicle_id),
                 ended_at=self.model_time,
