@@ -1,18 +1,14 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from literalai import Optional
+from typing import Mapping
+from base.entity import Entity
+from base.input import Input
 
 
-class ModelAdapter(ABC):
-    InputType: type[dataclass] = None
-    OutputType: type[dataclass] = None
-    _registry: dict[str, type["ModelAdapter"]] = {}
+class Adapter(ABC):
+    InputType: type[Input] | list[type[Input]]
+    OutputType: type[Entity] | list[type[Entity]]
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        ModelAdapter._registry[cls.__name__] = cls
-
-    def __init__(self, name: str, timestep_length: Optional[float] = None):
+    def __init__(self, name: str, timestep_length: float, **kwargs):
         self.name = name
         self._timestep_length = timestep_length
         self._model_time = 0.0
@@ -25,8 +21,6 @@ class ModelAdapter(ABC):
     @property
     def timestep_length(self) -> float:
         """Return the model's timestep length in global time units."""
-        if self._timestep_length is None:
-            raise ValueError("timestep_length not set.")
         return self._timestep_length
 
     @abstractmethod
@@ -35,14 +29,21 @@ class ModelAdapter(ABC):
         pass
 
     @abstractmethod
-    def read_outputs(self) -> dataclass:
+    def read_outputs(self) -> list[Entity]:
+        """Read the user-defined outputs of the model."""
         pass
 
     @abstractmethod
-    def write_inputs(self, inputs: dataclass):
+    def write_inputs(self, inputs: Mapping[type[Input], list]):
+        """Write user-defined inputs to the model."""
         pass
 
     @abstractmethod
     def advance(self, dt: float):
         """Advance the model by dt global time units."""
+        pass
+
+    @abstractmethod
+    def terminate(self):
+        """Terminate the model."""
         pass

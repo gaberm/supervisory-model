@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid
 import pandas as pd
 from shapely.geometry import Polygon
-from adapters.data_adapter import DataAdapter, ExternalDataset
+from adapter.data_adapter import DataAdapter, ExternalDataset
 
 
 class BuildingAdapter(DataAdapter):

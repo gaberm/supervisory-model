@@ -1,6 +1,7 @@
 import dataclasses
-from records.model_output import ModelOutput
-from adapters.data_adapter import ExternalDataset
+from typing import Union, get_args, get_origin, get_type_hints
+
+from base.entity.entity import Entity
 
 SQL_TYPE_MAP = {
     int: "INTEGER",
@@ -15,7 +16,7 @@ class SchemaManager:
         self.conn = conn
         self.run_id = run_id
 
-    def setup(self, record_classes: list):
+    def setup(self, entity_classes: list):
         if self._schema_exists():
             raise RuntimeError(
                 f"A simulation run named '{self.run_id}' already exists. "
@@ -23,7 +24,7 @@ class SchemaManager:
                 f"to remove it first."
             )
         self._create_schema()
-        for cls in record_classes:
+        for cls in entity_classes:
             self._create_table(cls)
 
     def _schema_exists(self) -> bool:
@@ -44,31 +45,85 @@ class SchemaManager:
             cur.execute(f"CREATE SCHEMA {self.run_id}")
         self.conn.commit()
 
-    def create_table(self, cls) -> str:
-        if isinstance(cls, ModelOutput):
-            query = self._query_for_model_output(cls)
-        elif isinstance(cls, ExternalDataset):
-            query = self._query_for_external_dataset(cls)
-        else:
-            raise ValueError(f"Unsupported record class type: {type(cls)}")
+    def _create_table(self, cls: type[Entity]) -> None:
         with self.conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(self._get_table_query(cls))
+            for col in cls.indexed:
+                cur.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{cls.table_name}_{col} "
+                    f"ON {self.run_id}.{cls.table_name} ({col});"
+                )
         self.conn.commit()
 
-    def _query_for_model_output(self, cls) -> str:
+    def _get_table_query(self, cls: type[Entity]) -> str:
+        hints = get_type_hints(cls)
         table = f"{self.run_id}.{cls.table_name}"
         columns = ", ".join(
-            f"{f.name} {SQL_TYPE_MAP.get(f.type, 'TEXT')}"
+            f"{f.name} {self._get_sql_type(hints[f.name])}"
             for f in dataclasses.fields(cls)
         )
         pk = f", PRIMARY KEY ({', '.join(cls.primary_key)})" if cls.primary_key else ""
         return f"CREATE TABLE IF NOT EXISTS {table} ({columns}{pk});"
 
-    def _query_for_external_dataset(self, cls) -> str:
-        table = f"{self.run_id}.{cls.table_name}"
-        columns = ", ".join(
-            f"{key} {SQL_TYPE_MAP.get(type(val[0]), 'TEXT')}"
-            for key, val in cls.data.items()
-        )
-        pk = f", PRIMARY KEY ({', '.join(cls.primary_key)})" if cls.primary_key else ""
-        return f"CREATE TABLE IF NOT EXISTS {table} ({columns}{pk});"
+    def reset_tables(self, drop_tables: bool = False):
+        with self.conn.cursor() as cur:
+            if drop_tables:
+                cur.execute(f"DROP SCHEMA IF EXISTS {self.run_id} CASCADE")
+                self.conn.commit()
+                self._create_schema()
+            else:
+                cur.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = %s",
+                    (self.run_id,),
+                )
+                tables = [row[0] for row in cur.fetchall()]
+                for table in tables:
+                    cur.execute(f"TRUNCATE TABLE {self.run_id}.{table}")
+        self.conn.commit()
+
+    def delete_run(self, run_id: str):
+        with self.conn.cursor() as cur:
+            cur.execute(f"DROP SCHEMA IF EXISTS {run_id} CASCADE")
+        self.conn.commit()
+
+    def list_runs(self) -> list[str]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name LIKE 'run_%' ORDER BY schema_name"
+            )
+            return [row[0] for row in cur.fetchall()]
+
+    def setup_external_table(self, dataset) -> None:
+        columns = []
+        for col, values in dataset.data.items():
+            sample = next((v for v in values if v is not None), None)
+            if isinstance(sample, bool):
+                sql_type = "BOOLEAN"
+            elif isinstance(sample, int):
+                sql_type = "INTEGER"
+            elif isinstance(sample, float):
+                sql_type = "FLOAT"
+            else:
+                sql_type = "TEXT"
+            columns.append(f"{col} {sql_type}")
+        pk = f", PRIMARY KEY ({', '.join(dataset.primary_key)})" if dataset.primary_key else ""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {self.run_id}.{dataset.table_name} "
+                f"({', '.join(columns)}{pk});"
+            )
+            for col in dataset.indexed:
+                cur.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{dataset.table_name}_{col} "
+                    f"ON {self.run_id}.{dataset.table_name} ({col});"
+                )
+        self.conn.commit()
+
+    def _get_sql_type(self, hint) -> str:
+        if get_origin(hint) is Union:
+            non_none = [a for a in get_args(hint) if a is not type(None)]
+            # TODO: multi-type unions (e.g. str | int | None) silently resolve to the
+            # first type — this may produce the wrong SQL type if order changes.
+            hint = non_none[0] if non_none else str
+        return SQL_TYPE_MAP.get(hint, "TEXT")

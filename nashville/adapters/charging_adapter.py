@@ -1,12 +1,12 @@
-from adapters import ModelAdapter
-from models.charging_model import ChargingModel
-from records import ChargingVehicleRecord, ChargedVehicleRecord, ChargingOutputs
-from models.inputs import ChargingInputs
+from adapter import Adapter
+from nashville.entities.port import Port
+from nashville.inputs.charging import ArrivedVehicles, DepartedVehicles
+from nashville.models.charging_model import ChargingModel
 
 
-class ChargingAdapter(ModelAdapter):
-    InputType = ChargingInputs
-    OutputType = ChargingOutputs
+class ChargingAdapter(Adapter):
+    InputType = list[ArrivedVehicles, DepartedVehicles]
+    OutputType = list[Port]
 
     @classmethod
     def from_config(cls, model_cfg) -> "ChargingAdapter":
@@ -29,11 +29,17 @@ class ChargingAdapter(ModelAdapter):
     def initialize(self):
         self._charging_model = ChargingModel(charging_rate=self._charging_rate)
 
-    def read_outputs(self) -> ChargingOutputs:
-        return ChargingOutputs(
-            charging_vehicles=self._get_charging_vehicles(),
-            charged_vehicles=self._charged_vehicles or (),
-        )
+    def read_outputs(self) -> list[Port]:
+        return [
+            Port(
+                port_id=vehicle_id,
+                station_id="default_station",  # Replace with actual station ID if available
+                power_usage=self._charging_rate,
+                status="charging",
+                time=self.model_time,
+            )
+            for vehicle_id in self._charging_model.get_charging_vehicles()
+        ]
 
     def _get_charging_vehicles(self) -> tuple[ChargingVehicleRecord, ...]:
         outputs = self._charging_model.get_all_soc()

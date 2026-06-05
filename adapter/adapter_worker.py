@@ -1,7 +1,10 @@
+import dataclasses
+import time
+import uuid
 import pika
 import json
-from adapters.model_adapter import ModelAdapter
-from supervisory.comm.commands import Message, Response
+from adapter.adapter import Adapter
+from supervisory.comm.commands import Message, Response, Registration
 
 
 class AdapterWorker:
@@ -14,7 +17,7 @@ class AdapterWorker:
             password=config.rabbitmq.password,
             routing_key=config.models[model].routing_key,
             queue_name=config.models[model].queue_name,
-            adapter=ModelAdapter._registry[config.models[model].adapter].from_config(
+            adapter=Adapter._registry[config.models[model].adapter].from_config(
                 config.models[model]
             ),
         )
@@ -27,7 +30,7 @@ class AdapterWorker:
         password: str,
         routing_key: str,
         queue_name: str,
-        adapter: ModelAdapter,
+        adapter: Adapter,
     ):
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
@@ -49,6 +52,35 @@ class AdapterWorker:
             queue=queue_name, on_message_callback=self._on_message
         )
         self.adapter = adapter
+
+    def register(self, timeout: float = 30.0):
+        self.channel.queue_declare(queue="worker_registration", durable=True)
+        reply = self.channel.queue_declare(queue="", exclusive=True).method.queue
+        corr = str(uuid.uuid4())
+        result = {}
+
+        def on_reply(ch, method, props, body):
+            if props.correlation_id == corr:
+                result["resp"] = Response.from_dict(json.loads(body))
+
+        self.channel.basic_consume(reply, on_reply, auto_ack=True)
+        reg = Registration(
+            name=self.name,
+            routing_key=self.routing_key,
+            metadata={"timestep_length": self.adapter.timestep_length},
+        )
+        self.channel.basic_publish(
+            exchange="", routing_key="worker_registration",
+            properties=pika.BasicProperties(reply_to=reply, correlation_id=corr),
+            body=json.dumps(reg.to_dict()),
+        )
+        deadline = time.time() + timeout
+        while "resp" not in result:
+            if time.time() > deadline:
+                raise TimeoutError("supervisory did not accept registration")
+            self.connection.process_data_events(time_limit=1)
+        if not result["resp"].success:
+            raise RuntimeError(f"registration rejected: {result['resp'].error}")
 
     def _on_message(self, ch, method, properties, body):
         message = Message.from_dict(json.loads(body))
@@ -83,13 +115,16 @@ class AdapterWorker:
         return Response(success=True)
 
     def write_inputs(self, payload):
-        inputs = self.adapter.InputType.from_dict(payload)
-        self.adapter.write_inputs(inputs)
+        self.adapter.write_inputs(payload)
         return Response(success=True)
 
     def read_outputs(self, payload):
         outputs = self.adapter.read_outputs()
-        return Response(success=True, payload=outputs.to_dict())
+        if isinstance(outputs, list):
+            serialized = [dataclasses.asdict(o) for o in outputs]
+        else:
+            serialized = outputs.to_dict()
+        return Response(success=True, payload=serialized)
 
     def advance(self, payload):
         self.adapter.advance(payload)
@@ -101,4 +136,5 @@ class AdapterWorker:
 
     def run(self):
         print(f"[{self.__class__.__name__}] Waiting for commands...")
+        self.register()
         self.channel.start_consuming()

@@ -1,20 +1,12 @@
+import time
+import uuid
 import pika
 import json
-import uuid
 from typing import Any
-from .commands import Operation, Message, Response
+from .commands import Operation, Message, Response, Registration
 
 
 class RabbitMQClient:
-    @classmethod
-    def from_config(cls, config) -> "RabbitMQClient":
-        return cls(
-            host=config.rabbitmq.host,
-            port=config.rabbitmq.port,
-            username=config.rabbitmq.username,
-            password=config.rabbitmq.password,
-        )
-
     def __init__(self, host="localhost", port=5672, username="guest", password="guest"):
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
@@ -24,7 +16,9 @@ class RabbitMQClient:
             )
         )
         self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange="tasks", exchange_type="direct", durable=True)
+        self.channel.exchange_declare(
+            exchange="tasks", exchange_type="direct", durable=True
+        )
         result = self.channel.queue_declare(queue="", exclusive=True)
         self.reply_queue = result.method.queue
         self.pending = {}
@@ -32,6 +26,36 @@ class RabbitMQClient:
         self.channel.basic_consume(
             queue=self.reply_queue, on_message_callback=self._on_reply, auto_ack=True
         )
+    
+    def collect_registrations(self, validate, expected: int, timeout: float = 30.0):
+        """Block until `expected` distinct workers register and pass `validate`.
+        validate(reg) -> (accepted: bool, error: str | None).
+        Returns {name: Registration}; raises TimeoutError(partial) on timeout."""
+        self.channel.queue_declare(queue="worker_registration", durable=True)
+        registered: dict[str, Registration] = {}
+
+        def handler(ch, method, props, body):
+            reg = Registration.from_dict(json.loads(body))
+            ok, error = validate(reg)
+            if ok:
+                registered[reg.name] = reg
+            ch.basic_publish(
+                exchange="", routing_key=props.reply_to,
+                properties=pika.BasicProperties(correlation_id=props.correlation_id),
+                body=json.dumps(Response(success=ok, error=error).to_dict()),
+            )
+            ch.basic_ack(method.delivery_tag)
+
+        tag = self.channel.basic_consume("worker_registration", handler)
+        deadline = time.time() + timeout
+        try:
+            while len(registered) < expected:
+                if time.time() > deadline:
+                    raise TimeoutError(registered)
+                self.connection.process_data_events(time_limit=1)
+        finally:
+            self.channel.basic_cancel(tag)
+        return registered
 
     def initialize(self, worker: str, on_ack):
         self._send(worker, Message(Operation.INITIALIZE), on_ack)
