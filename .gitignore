@@ -1,5 +1,7 @@
 __pycache__
 .claude
+__pycache__
+.claude
 .DS_Store
 .vscode
 adapters/__pycache__
