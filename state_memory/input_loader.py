@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Sequence
 from base.input.input import Input, Join
 from supervisory.time.time import TimeRange
 
@@ -16,7 +17,19 @@ class InputLoader:
         finally:
             self._pool.putconn(conn)
 
-    def load_inputs(self, input_spec: type[Input], time_range: TimeRange) -> list[dict]:
+    def load_inputs(
+        self,
+        input_specs: type[Input] | Sequence[type[Input]],
+        time_range: TimeRange,
+    ) -> dict[str, list[dict]]:
+        specs = (
+            list(input_specs)
+            if isinstance(input_specs, (list, tuple))
+            else [input_specs]
+        )
+        return {spec.key: self._load_one(spec, time_range) for spec in specs}
+
+    def _load_one(self, input_spec: type[Input], time_range: TimeRange) -> list[dict]:
         query, values = self._get_fetch_query(input_spec, time_range)
         with self._connection() as conn:
             with conn.cursor() as cur:
@@ -27,7 +40,7 @@ class InputLoader:
     def _get_fetch_query(
         self, input_spec: type[Input], time_range: TimeRange
     ) -> tuple[str, list]:
-        fields = list(input_spec.row.__annotations__.keys())
+        fields = list(input_spec.row_fields)
         if input_spec.is_join:
             return self._get_join_query(input_spec, fields, time_range)
         return self._get_simple_query(input_spec, fields, time_range)
@@ -35,10 +48,10 @@ class InputLoader:
     def _get_simple_query(
         self, input_spec: type[Input], fields: list[str], time_range: TimeRange
     ) -> tuple[str, list]:
-        entity = input_spec.entity
+        entity = input_spec.from_
         table = f"{self.run_id}.{entity.table_name}"
         where, values = self._build_where(
-            entity.time_field, time_range, input_spec.filters
+            entity.time_field, time_range, input_spec.where
         )
         return f"SELECT {', '.join(fields)} FROM {table} WHERE {where}", values
 
@@ -50,7 +63,7 @@ class InputLoader:
         where, values = self._build_where(
             f"{la}.{join.left_entity.time_field}",
             time_range,
-            input_spec.filters,
+            input_spec.where,
             aliased=True,
         )
         query = (
@@ -71,7 +84,7 @@ class InputLoader:
         clauses = [f"{time_field} >= %s AND {time_field} < %s"]
         values = [time_range.start_time, time_range.end_time]
         for f in filters:
-            field = f"{f.entity.table_name}.{f.field}" if aliased else f.field
+            field = f"{f.from_.table_name}.{f.field}" if aliased else f.field
             clauses.append(f"{field} {f.cmp.op} %s")
             values.append(f.cmp.value)
         return " AND ".join(clauses), values

@@ -1,0 +1,46 @@
+from functools import lru_cache
+from typing import Literal
+from pyproj.exceptions import CRSError, ProjError
+from pyproj import Transformer
+from base import Record, Geometry
+import dataclasses
+
+SHAPE_TYPE = Literal["POINT", "LINESTRING", "POLYGON"]
+
+
+@lru_cache(maxsize=None)
+def _transformer_to_4326(epsg_code: int) -> Transformer:
+    try:
+        return Transformer.from_crs(epsg_code, 4326, always_xy=True)
+    except CRSError as error:
+        raise ValueError(f"Invalid EPSG code: {epsg_code}") from error
+
+
+def to_4326(
+    coords: tuple[float, float] | list[tuple[float, float]],
+    shape: SHAPE_TYPE,
+    epsg_code: int,
+) -> tuple[float, float] | list[tuple[float, float]]:
+    if epsg_code == 4326:
+        return coords
+
+    project = _transformer_to_4326(epsg_code).transform
+    try:
+        if shape == "POINT":
+            return project(*coords, errcheck=True)
+        return [project(x, y, errcheck=True) for x, y in coords]
+    except ProjError as error:
+        raise ValueError(
+            f"Cannot transform coord {coords!r} from EPSG:{epsg_code} "
+            "to EPSG:4326. Check if the coordinates are valid for the given EPSG code."
+        ) from error
+
+
+def convert_coords(output: Record) -> Record:
+    if isinstance(output, Geometry):
+        return dataclasses.replace(
+            output,
+            coords_4326=to_4326(output.coords, output.shape, output.epsg_code),
+        )
+    else:
+        return output

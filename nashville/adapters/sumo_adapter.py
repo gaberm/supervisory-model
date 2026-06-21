@@ -1,13 +1,13 @@
+from typing import Mapping
 from adapter import Adapter
-from ..entities.vehicle import Vehicle
-from ..inputs.sumo import VehicleSocInput
+from nashville.inputs.sumo import VehicleSocInput
+from nashville.outputs.sumo import EV, VehicleBattery
 import traci
-from traci.constants import VAR_ROAD_ID
 
 
 class SumoAdapter(Adapter):
     InputType = VehicleSocInput
-    OutputType = Vehicle
+    OutputType = EV
 
     def __init__(self, name, timestep_length, sumo_config):
         super().__init__(
@@ -22,69 +22,91 @@ class SumoAdapter(Adapter):
         self._traci = traci
         self._timestep_length = self._traci.simulation.getDeltaT()
 
-    def read_outputs(self) -> list[Vehicle]:
+    def read_outputs(self) -> list[EV]:
         output = []
         output += self._get_arrived_vehicles()
         output += self._get_departed_vehicles()
+        output += self._get_battery()
         return output
 
-    def _get_vehicle_coord(self, v_id: str) -> tuple[float, float]:
-        return self._traci.simulation.convertGeo(*self._traci.vehicle.getPosition(v_id))
+    def _get_vehicle_coords(self, veh_id: str) -> tuple[float, float]:
+        return self._traci.simulation.convertGeo(
+            *self._traci.vehicle.getPosition(veh_id)
+        )
 
-    def _get_vehicle_soc(self, v_id: str) -> float:
+    def _get_soc(self, veh_id: str) -> float:
         try:
-            soc = self._traci.vehicle.getParameter(
-                v_id, "device.battery.actualBatteryCapacity"
+            energy_consumed = self._traci.vehicle.getParameter(
+                veh_id, "device.battery.totalEnergyConsumed"
             )
-            return float(soc) / 100
+            energy_capacity = self._traci.vehicle.getParameter(
+                veh_id, "device.battery.capacity"
+            )
+            return float(energy_consumed) / float(energy_capacity)
         except traci.exceptions.TraCIException:
             return None
 
-    def _get_arrived_vehicles(self) -> list[Vehicle]:
-        return [
-            Vehicle(
-                veh_id=veh_id,
-                soc=self._get_vehicle_soc(veh_id),
-                state="arrived",
-                time=self.model_time,
-                lon=self._get_vehicle_coord(veh_id)[0],
-                lat=self._get_vehicle_coord(veh_id)[1],
+    def _get_arrived_vehicles(self) -> list[EV]:
+        evs = []
+        for veh_id in self._traci.simulation.getArrivedIDList():
+            soc = self._get_soc(veh_id)
+            if soc is not None:
+                lon, lat = self._get_vehicle_coords(veh_id)
+                evs.append(
+                    EV(
+                        veh_id=veh_id,
+                        soc=soc,
+                        state="arrived",
+                        time=self.model_time,
+                        coords=(lon, lat),
+                    )
+                )
+        return evs
+
+    def _get_departed_vehicles(self) -> list[EV]:
+        evs = []
+        for veh_id in self._traci.simulation.getDepartedIDList():
+            soc = self._get_soc(veh_id)
+            if soc is not None:
+                lon, lat = self._get_vehicle_coords(veh_id)
+                evs.append(
+                    EV(
+                        veh_id=veh_id,
+                        soc=soc,
+                        state="departed",
+                        time=self.model_time,
+                        coords=(lon, lat),
+                    )
+                )
+        return evs
+
+    def _get_battery(self) -> list[VehicleBattery]:
+        capacities = []
+        for veh_id in self._traci.simulation.getDepartedIDList():
+            capacity = self._traci.vehicle.getParameter(
+                veh_id, "device.battery.capacity"
             )
-            for veh_id in self._traci.simulation.getArrivedIDList()
-        ]
-
-    def _get_departed_vehicles(self) -> list[Vehicle]:
-        return [
-            Vehicle(
-                veh_id=v_id,
-                soc=self._get_vehicle_soc(v_id),
-                state="departed",
-                time=self.model_time,
-                lon=self._get_vehicle_coord(v_id)[0],
-                lat=self._get_vehicle_coord(v_id)[1],
+            max_charge_rate = self._traci.vehicle.getParameter(
+                veh_id, "device.battery.maximumChargeRate"
             )
-            for v_id in self._traci.simulation.getDepartedIDList()
-        ]
+            capacities.append(
+                VehicleBattery(
+                    veh_id=veh_id,
+                    capacity=capacity,
+                    charging_power=max_charge_rate,
+                )
+            )
+        return capacities
 
-    def write_inputs(self, inputs: list[dict]):
-        for item in inputs:
-            self._set_vehicle_soc(str(item["veh_id"]), item["soc"])
-
-    def _set_vehicle_soc(self, vehicle_id: str, soc: float):
-        self._traci.vehicle.setParameter(
-            vehicle_id, "device.battery.actualBatteryCapacity", str(soc * 100)
-        )
-
-    def advance(self, dt: float):
-        if dt % self.timestep_length != 0:
-            raise ValueError(
-                f"SUMO adapter cannot advance by dt={dt}. It must be a multiple of the timestep length {self.timestep_length}."
+    def write_inputs(self, inputs: dict[str, list[dict]]):
+        for veh_id, soc in inputs.get(VehicleSocInput.key, []):
+            self._traci.vehicle.setParameter(
+                veh_id, "device.battery.actualBatteryCapacity", str(soc * 100)
             )
 
-        steps = int(dt / self.timestep_length)
-        for _ in range(steps):
-            self._traci.simulationStep()
-            self._model_time += self.timestep_length
+    def advance(self):
+        self._traci.simulationStep()
+        self._model_time += self.timestep_length
 
     def terminate(self):
         if self._traci is not None:

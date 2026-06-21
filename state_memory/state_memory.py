@@ -1,8 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Sequence
 import psycopg2.pool
-from base import Entity, Input
+from psycopg2.extras import execute_values
+from base import Input, Record
 from state_memory.validation import validate_run_id
 from supervisory.time.time import TimeRange
 from .input_loader import InputLoader
@@ -34,32 +36,37 @@ class StateMemory:
         finally:
             self._pool.putconn(conn)
 
-    def setup(self, entity_classes: list[type[Entity]]):
+    def setup(self, entity_classes: list[type[Record]]):
         self._schema.setup(entity_classes)
 
-    def insert_outputs(self, entity_cls: type[Entity], rows: list[dict]):
-        for row in rows:
-            fields = list(row.keys())
-            values = list(row.values())
-            query = (
-                f"INSERT INTO {self.run_id}.{entity_cls.table_name} "
-                f"({', '.join(fields)}) VALUES ({', '.join(['%s'] * len(fields))})"
-            )
-            if entity_cls.diagnostic:
-                self._executor.submit(self._execute_insert, query, values)
-            else:
-                self._execute_insert(query, values)
+    def insert_outputs(self, entity_cls: type[Record], rows: list[dict]):
+        if not rows:
+            return
+        # Fix the column order once so every row serializes consistently.
+        columns = list(rows[0].keys())
+        argslist = [tuple(row[col] for col in columns) for row in rows]
+        query = (
+            f"INSERT INTO {self.run_id}.{entity_cls.table_name} "
+            f"({', '.join(columns)}) VALUES %s"
+        )
+        if entity_cls.diagnostic:
+            self._executor.submit(self._execute_insert, query, argslist)
+        else:
+            self._execute_insert(query, argslist)
 
-    def _execute_insert(self, query: str, values: list):
+    def _execute_insert(self, query: str, argslist: list[tuple]):
+        # One connection checkout, one multi-row statement, one commit per batch.
         with self._connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(query, values)
+                execute_values(cur, query, argslist)
             conn.commit()
 
     def load_inputs(
-        self, input_spec: type[Input], time_interval: TimeRange
-    ) -> list[Input]:
-        return self._loader.load_inputs(input_spec, time_interval)
+        self,
+        input_specs: type[Input] | Sequence[type[Input]],
+        time_interval: TimeRange,
+    ) -> dict[str, list[dict]]:
+        return self._loader.load_inputs(input_specs, time_interval)
 
     def reset_tables(self, drop_tables: bool = False):
         self._schema.reset_tables(drop_tables=drop_tables)

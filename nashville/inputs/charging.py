@@ -1,24 +1,22 @@
-from typing import TypedDict
-from base.input.input import Input, Filter, Equal
-from ..entities.vehicle import Vehicle
-
-
-class VehicleSoc(TypedDict):
-    veh_id: int
-    soc: float
+from base import Input, Filter, Equal, Fields, Join
+from nashville.outputs.charging import Station
+from nashville.outputs.sumo import EV, VehicleBattery
 
 
 class ArrivedVehicles(Input):
-    entity = Vehicle
-    filters = [
-        Filter(entity=Vehicle, field="status", cmp=Equal("arrived")),
+    from_ = EV
+    where = [
+        Filter(EV, "state", Equal("arrived")),
     ]
-    row = VehicleSoc
+    on = Join((EV, "veh_id"), (VehicleBattery, "veh_id"))
+    select = Fields(
+        (EV, "veh_id", "soc"), (VehicleBattery, "capacity_kwh", "charging_power")
+    )
 
 
 class DepartedVehicles(Input):
-    entity = Vehicle
-    filters = [
-        Filter(entity=Vehicle, field="status", cmp=Equal("departed")),
+    from_ = EV
+    where = [
+        Filter("state", Equal("departed")),
     ]
-    row = VehicleSoc
+    select = Fields("veh_id", "soc")

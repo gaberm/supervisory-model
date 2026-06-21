@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid
 import pandas as pd
 from shapely.geometry import Polygon
-from adapter.data_adapter import DataAdapter, ExternalDataset
+from base.output.dataset import DataAdapter, Dataset
 
 
 class BuildingAdapter(DataAdapter):
@@ -10,8 +10,8 @@ class BuildingAdapter(DataAdapter):
         self.buildings_path = buildings_path
         self.energy_path = energy_path
 
-    def load(self) -> list[ExternalDataset]:
-        return ExternalDataset(
+    def load(self) -> list[Dataset]:
+        return Dataset(
             table_name="buildings",
             primary_key="uuid",
             data=self._load_buildings(),

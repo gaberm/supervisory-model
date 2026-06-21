@@ -1,7 +1,6 @@
 import dataclasses
 from typing import Union, get_args, get_origin, get_type_hints
-
-from base.entity.entity import Entity
+from base import Record
 
 SQL_TYPE_MAP = {
     int: "INTEGER",
@@ -45,7 +44,7 @@ class SchemaManager:
             cur.execute(f"CREATE SCHEMA {self.run_id}")
         self.conn.commit()
 
-    def _create_table(self, cls: type[Entity]) -> None:
+    def _create_table(self, cls: type[Record]) -> None:
         with self.conn.cursor() as cur:
             cur.execute(self._get_table_query(cls))
             for col in cls.indexed:
@@ -55,7 +54,7 @@ class SchemaManager:
                 )
         self.conn.commit()
 
-    def _get_table_query(self, cls: type[Entity]) -> str:
+    def _get_table_query(self, cls: type[Record]) -> str:
         hints = get_type_hints(cls)
         table = f"{self.run_id}.{cls.table_name}"
         columns = ", ".join(
@@ -107,7 +106,11 @@ class SchemaManager:
             else:
                 sql_type = "TEXT"
             columns.append(f"{col} {sql_type}")
-        pk = f", PRIMARY KEY ({', '.join(dataset.primary_key)})" if dataset.primary_key else ""
+        pk = (
+            f", PRIMARY KEY ({', '.join(dataset.primary_key)})"
+            if dataset.primary_key
+            else ""
+        )
         with self.conn.cursor() as cur:
             cur.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.run_id}.{dataset.table_name} "

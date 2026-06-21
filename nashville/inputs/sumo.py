@@ -1,16 +1,7 @@
-from typing import TypedDict
-from base.input.input import Input, Filter, Equal
-from nashville.entities.port import Port
-
-
-class VehicleSoc(TypedDict):
-    veh_id: int
-    soc: float
+from base import Input, Fields
+from nashville.outputs.charging import ChargingEvent
 
 
 class VehicleSocInput(Input):
-    entity = Port
-    filters = [
-        Filter(entity=Port, field="status", cmp=Equal("arrived")),
-    ]
-    row = VehicleSoc
+    from_ = ChargingEvent
+    select = Fields("veh_id", "final_soc")
