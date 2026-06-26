@@ -3,23 +3,44 @@ from typing import ClassVar, Literal
 
 class Record:
     table_name: ClassVar[str]
-    primary_key: ClassVar[tuple[str, ...]]
-    indexed: ClassVar[tuple[str, ...]] = ()
-    on_conflict: ClassVar[Literal["ignore", "update"]] = "ignore"
+    primary_key: ClassVar[str | tuple[str, ...]]
+    indexed: ClassVar[str | tuple[str, ...]] = ()
+    on_conflict: ClassVar[Literal["IGNORE", "UPDATE"]] = "IGNORE"
     diagnostic: ClassVar[bool] = False
-    time_field: ClassVar[str] = "time"
 
-    def __post_init__(self):
-        for name in dir(self):
-            if name.startswith("_validate_"):
-                getattr(self, name)()
+    def __init_subclass__(cls):
+        cls._validate_primary_key_indexed()
+        cls._validate_on_conflict()
+        cls._validate_diagnostic()
 
-    def _validate_primary_key(self):
-        for key in self.primary_key:
-            if not hasattr(self, key):
-                raise ValueError(f"Primary key field '{key}' is missing.")
+    @classmethod
+    def _validate_primary_key_indexed(cls):
+        field_names = {
+            name
+            for parent in cls.__mro__
+            for name in getattr(parent, "__annotations__", {})
+        }
+        for attr in ("primary_key", "indexed"):
+            value = getattr(cls, attr, ())
+            if isinstance(value, str):
+                value = (value,)
+                setattr(cls, attr, value)
+            for key in value:
+                if key not in field_names:
+                    raise ValueError(
+                        f"{cls.__name__}: {attr} field '{key}' is not declared"
+                    )
 
-    def _validate_indexed(self):
-        for key in self.indexed:
-            if not hasattr(self, key):
-                raise ValueError(f"Indexed field '{key}' is missing.")
+    @classmethod
+    def _validate_on_conflict(cls):
+        if cls.on_conflict not in ("IGNORE", "UPDATE"):
+            raise ValueError(
+                f"{cls.__name__}.on_conflict must be 'IGNORE' or 'UPDATE'; got {cls.on_conflict!r}"
+            )
+
+    @classmethod
+    def _validate_diagnostic(cls):
+        if not isinstance(cls.diagnostic, bool):
+            raise TypeError(
+                f"{cls.__name__}.diagnostic must be a boolean; got {cls.diagnostic!r}"
+            )
